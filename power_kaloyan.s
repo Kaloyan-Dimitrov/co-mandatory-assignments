@@ -16,8 +16,8 @@ main:
 	call printf	
 
 	# read the input (base and exponent)
-	leaq -8(%rbp), %rsi # set the address of the first input (base) to -8 bytes from the base pointer
 	leaq -16(%rbp), %rdx # set the address of the second input (exponent) to -16 bytes from the base pointer
+	leaq -8(%rbp), %rsi # set the address of the first input (base) to -8 bytes from the base pointer
 	movq $input_message, %rdi # param1 of printf: the format string
 	movq $0, %rax # hidden param: no vector registers in use for scanf
 	call scanf
@@ -27,9 +27,9 @@ main:
 	call pow
 
 	# print the result
+	movq %rax, %rsi # param2 of printf: the result
 	movq $0, %rax # hidden param: no vector registers in use for printf
 	movq $result, %rdi # param1 of printf: the format string
-	movq %rax, %rsi # param2 of printf: the result
 	call printf
 
 	# epilogue
@@ -73,11 +73,14 @@ pow:
 	movq $1, %rax # initialize rax as 1
 	while:
 		cmpq $0, %rsi # check if the exponent is 0
-		je while_end
+		je while_end # if it is, jump to the end of the loop
 
-		mulq %rdi
-		dec %rsi
+		mulq %rdi # multiply the base by the total
+		dec %rsi # decrement the exponent
 
-		jmp while
+		jmp while # jump to the beginning of the loop
 	while_end:
+		# epilogue
+		movq %rbp, %rsp # restore the stack pointer
+		popq %rbp # restore the base pointer
 		ret
