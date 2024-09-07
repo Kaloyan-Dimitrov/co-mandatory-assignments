@@ -24,7 +24,7 @@ decode:
 	# prologue
 	pushq	%rbp 			# push the base pointer (and align the stack)
 	movq	%rsp, %rbp		# copy stack pointer value to base pointer
-	subq	$16, %rsp
+	subq	$32, %rsp
 
 	# your code goes here
 	movq (%rdi), %rdi # load block at address
@@ -45,9 +45,11 @@ decode:
 
 	# print character n times
 	print_loop:
+	    movq %rdi, -24(%rbp)
 	    movq %rcx, -8(%rbp)
 	    call putchar
 	    movq -8(%rbp), %rcx
+	    movq -24(%rbp), %rdi
 	loop print_loop
 
 	cmpq $0, -16(%rbp)
@@ -60,7 +62,6 @@ decode:
 
 decode_end:
 	# epilogue
-	addq	$32, %rsp
 	movq	%rbp, %rsp		# clear local variables from stack
 	popq	%rbp			# restore base pointer location 
 	ret
