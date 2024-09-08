@@ -82,10 +82,8 @@
 
 		pushq %rdi # push the input to the stack
 		dec %rdi # decrement the input
-
 		call factorial
-		mulq -8(%rsp) # multiply the result of the recursive call by the input
-
+		mulq (%rsp) # multiply the result of the recursive call (%rax) by the last pushed value of the stack
 
 		# epilogue
 		addq $8, %rsp # deallocate the for the value of the recursive call to factorial
