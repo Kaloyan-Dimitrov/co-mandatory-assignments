@@ -4,11 +4,12 @@
     block_mask:	    	.quad 0x0000FFFFFFFF0000
     count_mask:	    	.quad 0x000000000000FF00
     char_mask:	    	.quad 0x00000000000000FF
+    base_address:	.quad 0x0
     color_format:	.asciz "\x1B[%u;%um%c"
     attr_format:        .asciz "\x1B[%um%c"
 
 .text
-.include "examples/final.s"
+.include "helloWorld.s"
 
 .global main
 
@@ -117,7 +118,12 @@ decode:
 	movq	%rsp, %rbp		# copy stack pointer value to base pointer
 	subq	$48, %rsp
 
-	# your code goes here
+	# if we haven't yet stored the base address save it
+	cmpq $0, (base_address)
+	jne base_address_check_end
+	    movq %rdi, base_address
+	
+	base_address_check_end:	
 	movq (%rdi), %rdi # load block at address
 
 	# get the next block offset
@@ -162,7 +168,8 @@ decode:
 
 	# add new address offset
 	movq -16(%rbp), %rax
-	leaq MESSAGE(, %rax, 8), %rdi
+	movq base_address, %r8
+	leaq (%r8, %rax, 8), %rdi
 	call decode
 
 decode_end:
