@@ -24,20 +24,25 @@ decode:
 	# prologue
 	pushq	%rbp 			# push the base pointer (and align the stack)
 	movq	%rsp, %rbp		# copy stack pointer value to base pointer
-	subq	$32, %rsp
+	subq	$32, %rsp		# reserve 32 bytes, so we keep stack aligned
 
 	# your code goes here
 	movq (%rdi), %rdi # load block at address
 
 	# get the next block offset
 	movq block_mask(%rip), %rax
+	# store block offset in temporary register
 	andq %rdi, %rax
+	# apply offset to get correct value
 	shrq $16, %rax
+	# store on stack so we can use later
 	movq %rax, -16(%rbp)
 	
-	# get the count
+	# apply the count mask
 	movq count_mask(%rip), %rcx
+	# store count in loop counter
 	andq %rdi, %rcx
+	# shift right so we get the correct value
 	shrq $8, %rcx
 
 	# get the character
@@ -45,13 +50,16 @@ decode:
 
 	# print character n times
 	print_loop:
+	    # store caller saved registers
 	    movq %rdi, -24(%rbp)
 	    movq %rcx, -8(%rbp)
 	    call putchar
+	    # restore caller saved registers
 	    movq -8(%rbp), %rcx
 	    movq -24(%rbp), %rdi
 	loop print_loop
 
+	# check if the index of the next block is 0
 	cmpq $0, -16(%rbp)
 	je decode_end
 
