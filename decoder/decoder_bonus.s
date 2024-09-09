@@ -4,7 +4,6 @@
     block_mask:	    	.quad 0x0000FFFFFFFF0000
     count_mask:	    	.quad 0x000000000000FF00
     char_mask:	    	.quad 0x00000000000000FF
-    base_address:	.quad 0x0
     color_format:	.asciz "\x1B[%u;%um%c"
     attr_format:        .asciz "\x1B[%um%c"
 
@@ -118,59 +117,58 @@ decode:
 	movq	%rsp, %rbp		# copy stack pointer value to base pointer
 	subq	$48, %rsp
 
-	# if we haven't yet stored the base address save it
-	cmpq $0, (base_address)
-	jne base_address_check_end
-	    movq %rdi, base_address
-	
-	base_address_check_end:	
-	movq (%rdi), %rdi # load block at address
+	# store base address
+	movq %rdi, %r9
 
-	# get the next block offset
-	movq block_mask(%rip), %rax
-	andq %rdi, %rax
-	shrq $16, %rax
-	movq %rax, -16(%rbp)
-	
-	# get the count
-	movq count_mask(%rip), %rcx
-	andq %rdi, %rcx
-	shrq $8, %rcx
+	decode_while:
+	    movq (%rdi), %rdi # load block at address
 
-	# get the bg color
-	movq bg_byte(%rip), %rdx
-	andq %rdi, %rdx
-	shrq $56, %rdx
+	    # get the next block offset
+	    movq block_mask(%rip), %rax
+	    andq %rdi, %rax
+	    shrq $16, %rax
+	    movq %rax, -16(%rbp)
+	    
+	    # get the count
+	    movq count_mask(%rip), %rcx
+	    andq %rdi, %rcx
+	    shrq $8, %rcx
 
-	# get the fg byte
-	movq fg_byte(%rip), %rsi
-	andq %rdi, %rsi
-	shrq $48, %rsi
+	    # get the bg color
+	    movq bg_byte(%rip), %rdx
+	    andq %rdi, %rdx
+	    shrq $56, %rdx
 
-	# get the character
-	andq char_mask, %rdi
+	    # get the fg byte
+	    movq fg_byte(%rip), %rsi
+	    andq %rdi, %rsi
+	    shrq $48, %rsi
 
-	# print character n times
-	print_loop:
-	    movq %rcx, -8(%rbp)
-	    movq %rdi, -24(%rbp)
-	    movq %rsi, -32(%rbp)
-	    movq %rdx, -40(%rbp)
-	    call print_char
-	    movq -40(%rbp), %rdx
-	    movq -32(%rbp), %rsi
-	    movq -24(%rbp), %rdi
-	    movq -8(%rbp), %rcx
-	loop print_loop
+	    # get the character
+	    andq char_mask, %rdi
 
-	cmpq $0, -16(%rbp)
-	je decode_end
+	    # print character n times
+	    print_loop:
+		movq %rcx, -8(%rbp)
+		movq %rdi, -24(%rbp)
+		movq %rsi, -32(%rbp)
+		movq %rdx, -40(%rbp)
+		movq %r9, -48(%rbp)
+		call print_char
+		movq -48(%rbp), %r9
+		movq -40(%rbp), %rdx
+		movq -32(%rbp), %rsi
+		movq -24(%rbp), %rdi
+		movq -8(%rbp), %rcx
+	    loop print_loop
 
-	# add new address offset
-	movq -16(%rbp), %rax
-	movq base_address, %r8
-	leaq (%r8, %rax, 8), %rdi
-	call decode
+	    cmpq $0, -16(%rbp)
+	    je decode_end
+
+	    # add new address offset
+	    movq -16(%rbp), %rax
+	    leaq (%r9, %rax, 8), %rdi
+	    jmp decode_while
 
 decode_end:
 	# epilogue
