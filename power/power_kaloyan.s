@@ -1,5 +1,5 @@
 .text
-title: .asciz "Names: Kaloyan Dimitrov, Mihail Mihov. NetIDs: kmdimitrov, mmihov. Assignment: POWERS\nPlease input a base and an exponent (both should be non-negarive):\n"
+title: .asciz "Names: Kaloyan Dimitrov, Mihail Mihov. NetIDs: kmdimitrov, mmihov. Assignment: POWERS\nPlease input a base and an exponent (base should be positive and exp should be non-negative):\n"
 input_message: .asciz "%ld %ld"
 result: .asciz "The result is %ld\n"
 .global main
@@ -39,9 +39,9 @@ main:
 	movq $0, %rdi # specify the 0 exit code
 	call exit # call the exit system call
 
-/**
+/*
 
-		/**
+		/
 		* The pow subroutine calculates powers
 		* of non-negative bases and exponents.
 		*

@@ -1,5 +1,5 @@
 .data
-prompt: .asciz "Please enter a non-negative base and exponent, separated by whitespace: "
+prompt: .asciz "Please enter a positive base and non-negative exponent, separated by whitespace: "
 input_format: .asciz "%ld %ld"
 output_format: .asciz "The result of %ld ^ %ld is %ld.\n"
 
@@ -15,18 +15,29 @@ pow:
     # initialize result variable
     movq $1, %rax
 
+    # check if base is 0
+    cmpq $0, %rdi
+    jne base_constraint_check_end
+    cmpq $0, %rsi
+    jne base_constraint_check_end
+	movq $1, %rdi
+	call exit
+
+base_constraint_check_end:
     # init loop counter
     movq %rsi, %rcx
 pow_loop:
+    cmpq $0, %rcx
+    jle pow_loop_end
     mulq %rdi
-    loop pow_loop
+    decq %rcx
+    jmp pow_loop
+pow_loop_end:
 
     # epilogue
-    addq $16, %rsp
     movq %rbp, %rsp
     popq %rbp
 
-    # return
     ret
 
 main:
@@ -60,7 +71,6 @@ main:
     call printf
 
     # epilogue
-    addq $16, %rsp
     movq %rbp, %rsp
     popq %rbp
 
