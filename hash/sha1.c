@@ -11,7 +11,6 @@ void message_schedule(uint32_t w[80]) {
 
 void sha1_chunk(uint32_t h[5], uint32_t w[80]) {
     message_schedule(w);
-
     uint32_t a = h[0];
     uint32_t b = h[1];
     uint32_t c = h[2];
