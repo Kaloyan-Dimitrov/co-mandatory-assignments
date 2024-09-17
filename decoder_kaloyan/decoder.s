@@ -41,7 +41,7 @@ string: .asciz "%c"
 
 		}
 
-*/
+**/
 
 decode:
 	# prologue

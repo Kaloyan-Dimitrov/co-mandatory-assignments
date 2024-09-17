@@ -4,11 +4,15 @@
     block_mask:	    	.quad 0x0000FFFFFFFF0000
     count_mask:	    	.quad 0x000000000000FF00
     char_mask:	    	.quad 0x00000000000000FF
-    color_format:	.asciz "\x1B[%u;%um%c"
-    attr_format:        .asciz "\x1B[%um%c"
+    char_format:	.asciz "%c"
+    color_format:	.asciz "\x1b[38;5;%um\x1b[48;5;%um%c"
+    attr_format:        .asciz "\x1b[%um%c"
+    old_fg:		.quad 0
+    old_bg:		.quad 0
+    old_attr:		.quad 0
 
 .text
-.include "helloWorld.s"
+.include "abc_sorted.s"
 
 .global main
 
@@ -71,18 +75,44 @@ print_char:
     pushq %rbp
     movq %rsp, %rbp
 
+    # if attribute
     cmpq %rsi, %rdx # cmp fg and bg
     je attribute
 
+    # if fg != old_fg || bg != old_bg
+    cmpq %rsi, old_fg
+    jne changed_color
+    cmpq %rdx, old_bg
+    jne changed_color
+
+    default:
+    # old fg and bg
+    movq %rdi, %rsi
+    movq $char_format, %rdi
+    movq $0, %rax
+    call printf
+    jmp print_end
+
+    changed_color:
+    # store last fb and bg
+    movq %rdx, old_bg
+    movq %rsi, old_fg
+
     movq %rdi, %rcx # char
-    addq $40, %rdx
-    addq $30, %rsi
+    # addq $40, %rdx
+    # addq $30, %rsi
     movq $color_format, %rdi # printf(format, attr, fg, bg, char)
     movq $0, %rax
     call printf
     jmp print_end
 
     attribute:
+    # if attr == old_attr
+    cmpq %rsi, old_attr
+    je default
+
+    movq %rsi, old_attr
+
     # get correct attribute
     xchgq %rsi, %rdi # swap char and attr
     call get_attr
@@ -123,7 +153,7 @@ decode:
 	decode_while:
 	    movq (%rdi), %rdi # load block at address
 
-	    # get the next block offset
+	    # get the next block offset (index)
 	    movq block_mask(%rip), %rax
 	    andq %rdi, %rax
 	    shrq $16, %rax
