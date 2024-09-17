@@ -42,16 +42,15 @@
 		call printf
 
 		# epilogue
-		addq $16, %rsp # deallocate the space for the input
 		movq %rbp, %rsp # move (copy) the base pointer into the stack pointer
 		popq %rbp # pop the previous base pointer from the stack
 
 		movq $0, %rdi # specify the 0 exit code
 		call exit # call the exit system call
 
-	/**
+	/*
 
-			/**
+			/
 			* The factorial subroutine calculates the factorial
 			* of a non-negative number using recursion.
 			*
@@ -75,18 +74,16 @@
 		# prologue
 		pushq %rbp # save the old base pointer
 		movq %rsp, %rbp # set the new base pointer
-		subq $8, %rsp # allocate space for the value of the recursive call to factorial
+		subq $16, %rsp # allocate space for the value of the recursive call to factorial
 
 		cmpq $0, %rdi # compare the input to 0
 		je factorial_end # if the input is equal to 0 - we are done
 
-		pushq %rdi # push the input to the stack
+		movq %rdi, -8(%rbp) # save the input to the stack
 		dec %rdi # decrement the input
 		call factorial
-		mulq (%rsp) # multiply the result of the recursive call (%rax) by the last pushed value of the stack
-
+		mulq -8(%rbp) # multiply the result of the recursive call (%rax) by the saved input
 		# epilogue
-		addq $8, %rsp # deallocate the for the value of the recursive call to factorial
 		movq %rbp, %rsp # move (copy) the base pointer into the stack pointer
 		popq %rbp # pop the previous base pointer from the stack
 		ret
@@ -94,7 +91,6 @@
 		factorial_end:
 			movq $1, %rax # return 1 (the base of the recursion)
 			# epilogue
-			addq $8, %rsp # deallocate the space for the input
 			movq %rbp, %rsp # move (copy) the base pointer into the stack pointer
 			popq %rbp # pop the previous base pointer from the stack
 			ret
