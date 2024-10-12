@@ -3,7 +3,9 @@
     offset_stack:   .skip 1024
 
 .section .data
-    format_str: .asciz "We should be executing the following code:\n%s"
+    format_str:	    .asciz "We should be executing the following code:\n%s"
+    zero_loop_inc:  .ascii "[+]"
+    zero_loop_dec:  .ascii "[-]"
 
     # syscalls
     .equiv SYS_READ, 0
@@ -19,7 +21,7 @@
     .equiv MAP_ANONYMOUS, 0x20
 
     # max program size
-    .equiv PROG_SIZE, 65536
+    .equiv PROG_SIZE, 8388608 
 
     # brainfuck tokens
     .equiv TOK_INC,	'+'
@@ -111,6 +113,12 @@ op_ret:
     addq $\len, %rax
 .endm
 
+.macro backpatch_id_op address, value
+    movq \address, %rdi
+    addq $3, %rdi
+    movb \value, (%rdi)
+.endm
+
 .macro backpatch_near_jmp address, displacement
     movl \displacement, %esi
     movq \address, %rdi
@@ -195,6 +203,9 @@ compile_code:
 	movq $0, %r8
 	movb (%r10, %rdx, 1), %r8b
 
+	# Store old index for repeating operations
+	movq %rdx, %r11
+
 	cmpq $TOK_INC, %r8
 	je compile_inc
 
@@ -226,24 +237,68 @@ compile_code:
 	jmp compile_loop
 	
     compile_inc:
+	incq %r11
+	movb (%r10, %r11, 1), %r9b
+	cmpb $TOK_INC, %r9b
+	je compile_inc
+
+	subq %rdx, %r11
+
+	movq %rax, %r14
+
 	emit op_inc op_inc_len
 
-	incq %rdx
+	backpatch_id_op %r14, %r11b
+
+	addq %r11, %rdx
 	jmp compile_loop
     compile_dec:
+	incq %r11
+	movb (%r10, %r11, 1), %r9b
+	cmpb $TOK_DEC, %r9b
+	je compile_dec
+
+	subq %rdx, %r11
+
+	movq %rax, %r14
+
 	emit op_dec op_dec_len
 
-	incq %rdx
+	backpatch_id_op %r14, %r11b
+
+	addq %r11, %rdx
 	jmp compile_loop
     compile_inc_pc:
+	incq %r11
+	movb (%r10, %r11, 1), %r9b
+	cmpb $TOK_INC_PC, %r9b
+	je compile_inc_pc
+
+	subq %rdx, %r11
+
+	movq %rax, %r14
+
 	emit op_inc_pc op_inc_pc_len
 
-	incq %rdx
+	backpatch_id_op %r14, %r11b
+
+	addq %r11, %rdx
 	jmp compile_loop
     compile_dec_pc:
+	incq %r11
+	movb (%r10, %r11, 1), %r9b
+	cmpb $TOK_DEC_PC, %r9b
+	je compile_dec_pc
+
+	subq %rdx, %r11
+
+	movq %rax, %r14
+
 	emit op_dec_pc op_dec_pc_len
 
-	incq %rdx
+	backpatch_id_op %r14, %r11b
+
+	addq %r11, %rdx
 	jmp compile_loop
     compile_read:
 	emit op_read op_read_len
@@ -256,6 +311,14 @@ compile_code:
 	incq %rdx
 	jmp compile_loop
     compile_jz:
+	# Check for zeroing loop
+	# movq $3, %rdx
+	# movq %r10, %rsi
+	# addq $rdx, %rsi
+	# movq zero_loop_inc, %rdi
+	# call strncmp
+	# cmpq $0, %rax
+	
 	emit op_cmpz, op_cmpz_len
 
 	# Save address before jump to offset stack
