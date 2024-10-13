@@ -1,9 +1,11 @@
 .section .bss
-    memory:	    .skip 32768
+    memory:	    .skip 65536
     offset_stack:   .skip 1024
+    good_carry:	    .skip 8
 
 .section .data
     format_str:	    .asciz "We should be executing the following code:\n%s"
+
     zero_loop_inc:  .ascii "[+]"
     zero_loop_dec:  .ascii "[-]"
 
@@ -287,6 +289,8 @@ compile_code:
 	movb %r11b, %sil
 	call backpatch_inc_dec
 
+	movq $1, good_carry
+
 	addq %r11, %r13
 	jmp compile_loop
     compile_dec:
@@ -309,6 +313,8 @@ compile_code:
 	movb %r11b, %sil
 	call backpatch_inc_dec
 
+	movq $1, good_carry
+
 	addq %r11, %r13
 	jmp compile_loop
     compile_zero:
@@ -318,6 +324,8 @@ compile_code:
 	call emit_symbol
 	movq %rax, %rbx
 	
+	movq $0, good_carry
+
 	addq $3, %r13
 	jmp compile_loop
     compile_inc_pc:
@@ -339,6 +347,8 @@ compile_code:
 	movq %r14, %rdi
 	movb %r11b, %sil
 	call backpatch_inc_dec
+
+	movq $0, good_carry
 
 	addq %r11, %r13
 	jmp compile_loop
@@ -362,6 +372,8 @@ compile_code:
 	movb %r11b, %sil
 	call backpatch_inc_dec
 
+	movq $0, good_carry
+
 	addq %r11, %r13
 	jmp compile_loop
     compile_read:
@@ -371,6 +383,8 @@ compile_code:
 	call emit_symbol
 	movq %rax, %rbx
 
+	movq $0, good_carry
+
 	incq %r13
 	jmp compile_loop
     compile_write:
@@ -379,6 +393,8 @@ compile_code:
 	movq %rbx, %rdi
 	call emit_symbol
 	movq %rax, %rbx
+
+	movq $0, good_carry
 
 	incq %r13
 	jmp compile_loop
@@ -403,11 +419,16 @@ compile_code:
 	test %rax, %rax
 	je compile_zero
 
+	movq good_carry, %rax
+	cmpq $0, %rax
+	jne compile_jz_skip_cmp
+
 	movq $op_cmpz_len, %rdx
 	leaq op_cmpz, %rsi
 	movq %rbx, %rdi
 	call emit_symbol
 	movq %rax, %rbx
+	compile_jz_skip_cmp:
 
 	# Save address before jump to offset stack
 	movq %rbx, (%r12, %r15, 8)
@@ -422,11 +443,16 @@ compile_code:
 	incq %r13
 	jmp compile_loop
     compile_jnz:
+	movq good_carry, %rax
+	cmpq $0, %rax
+	jne compile_jnz_skip_cmp
+
 	movq $op_cmpz_len, %rdx
 	leaq op_cmpz, %rsi
 	movq %rbx, %rdi
 	call emit_symbol
 	movq %rax, %rbx
+	compile_jnz_skip_cmp:
 
 	movq $op_jne_near_len, %rdx
 	leaq op_jne_near, %rsi
