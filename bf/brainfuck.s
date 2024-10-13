@@ -68,7 +68,7 @@ op_zero:
 op_read:
     movq $1, %rdx
     movq %r15, %rsi
-    movq $0, %rdi
+    xorq %rdi, %rdi
     movq $SYS_READ, %rax
     syscall
     .equiv op_read_len, . - op_read
@@ -180,7 +180,7 @@ print_code:
 
     movq %rdi, %rsi
     movq $format_str, %rdi
-    movq $0, %rax
+    xorq %rax, %rax
     call printf
 
     movq %rbp, %rsp
@@ -198,16 +198,16 @@ compile_code:
 
     # Allocate memory for program
     # void *mmap(void addr[.length], size_t length, int prot, int flags, int fd, off_t offset);
-    movq $0, %r9 # off_t offset
+    xorq %r9, %r9 # off_t offset
     movq $-1, %r8 # int fd
-    movq $0, %rcx # int flags
+    xorq %rcx, %rcx # int flags
     orq $MAP_PRIVATE, %rcx
     orq $MAP_ANONYMOUS, %rcx
-    movq $0, %rdx # int prot
+    xorq %rdx, %rdx # int prot
     orq $PROT_READ, %rdx
     orq $PROT_WRITE, %rdx
     movq $PROG_SIZE, %rsi # size_t length
-    movq $0, %rdi # void *addr
+    xorq %rdi, %rdi # void *addr
     call mmap
 
     # Save pointer to allocated memory
@@ -221,7 +221,7 @@ compile_code:
 
     # Initialize pointer to offset stack
     leaq offset_stack, %r12
-    movq $0, %r15
+    xorq %r15, %r15
 
     movq $op_init_len, %rdx
     leaq op_init, %rsi
@@ -230,9 +230,9 @@ compile_code:
     movq %rax, %rbx
 
     # Code offset
-    movq $0, %r13
+    xorq %r13, %r13
     compile_loop:
-	movq $0, %r8
+	xorq %r8, %r8
 	movb (%r10, %r13, 1), %r8b
 
 	# Store old index for repeating operations
@@ -517,7 +517,7 @@ execute_bytecode:
 
     # Make the program memory executable
     # int mprotect(void addr[.len], size_t len, int prot);
-    movq $0, %rdx # int prot
+    xorq %rdx, %rdx # int prot
     orq $PROT_READ, %rdx
     orq $PROT_EXEC, %rdx
     movq $PROG_SIZE, %rsi # size_t len
