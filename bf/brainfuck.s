@@ -191,7 +191,7 @@ print_code:
 compile_code:
     pushq %rbp
     movq %rsp, %rbp
-    subq $32, %rsp
+    subq $48, %rsp
 
     # Save pointer to code
     movq %rdi, -8(%rbp)
@@ -399,12 +399,18 @@ compile_code:
 	incq %r13
 	jmp compile_loop
     compile_jz:
+	movq %r10, -32(%rbp)
+	movq %r11, -24(%rbp)
+
 	# Check for [+]
 	movq $3, %rdx
 	movq %r10, %rsi
 	addq %r11, %rsi
 	leaq zero_loop_inc, %rdi
 	call strncmp
+
+	movq -32(%rbp), %r10
+	movq -24(%rbp), %r11
 
 	test %rax, %rax
 	je compile_zero
@@ -415,6 +421,9 @@ compile_code:
 	addq %r11, %rsi
 	leaq zero_loop_dec, %rdi
 	call strncmp
+
+	movq -32(%rbp), %r10
+	movq -24(%rbp), %r11
 
 	test %rax, %rax
 	je compile_zero
