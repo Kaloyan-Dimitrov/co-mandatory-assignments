@@ -105,26 +105,43 @@ op_ret:
     ret
     .equiv op_ret_len, . - op_ret
 
-.macro emit symbol len
-    movq $\len, %rcx
-    leaq \symbol, %rsi
-    movq %rax, %rdi
+# void *emit(void *addr, void *symbol, size_t len)
+emit_symbol:
+    pushq %rbp
+    movq %rsp, %rbp
+    
+    # Move bytes
+    movq %rdx, %rcx
     rep movsb
-    addq $\len, %rax
-.endm
 
-.macro backpatch_id_op address, value
-    movq \address, %rdi
+    # Return new program pointer
+    movq %rdi, %rax
+
+    movq %rbp, %rsp
+    popq %rbp
+    ret
+
+backpatch_inc_dec:
+    pushq %rbp
+    movq %rsp, %rbp
+
     addq $3, %rdi
-    movb \value, (%rdi)
-.endm
+    movb %sil, (%rdi)
 
-.macro backpatch_near_jmp address, displacement
-    movl \displacement, %esi
-    movq \address, %rdi
+    movq %rbp, %rsp
+    popq %rbp
+    ret
+
+backpatch_jmp_near:
+    pushq %rbp
+    movq %rsp, %rbp
+
     addq $2, %rdi
     movl %esi, (%rdi)
-.endm
+
+    movq %rbp, %rsp
+    popq %rbp
+    ret
 
 # Your brainfuck subroutine will receive one argument:
 # a zero termianted string containing the code to execute.
@@ -166,7 +183,7 @@ print_code:
 compile_code:
     pushq %rbp
     movq %rsp, %rbp
-    subq $16, %rsp
+    subq $32, %rsp
 
     # Save pointer to code
     movq %rdi, -8(%rbp)
@@ -188,23 +205,30 @@ compile_code:
     # Save pointer to allocated memory
     movq %rax, -16(%rbp)
 
+    # Move pointer to program memory to caller-saved register
+    movq %rax, %rbx
+
     # Restore pointer to code
     movq -8(%rbp), %r10
 
     # Initialize pointer to offset stack
     leaq offset_stack, %r12
-    movq $0, %r13
+    movq $0, %r15
 
-    emit op_init op_init_len
+    movq $op_init_len, %rdx
+    leaq op_init, %rsi
+    movq %rbx, %rdi
+    call emit_symbol
+    movq %rax, %rbx
 
     # Code offset
-    movq $0, %rdx
+    movq $0, %r13
     compile_loop:
 	movq $0, %r8
-	movb (%r10, %rdx, 1), %r8b
+	movb (%r10, %r13, 1), %r8b
 
 	# Store old index for repeating operations
-	movq %rdx, %r11
+	movq %r13, %r11
 
 	cmpq $TOK_INC, %r8
 	je compile_inc
@@ -233,7 +257,7 @@ compile_code:
 	cmpq $TOK_NULL, %r8
 	je compile_loop_end
 
-	incq %rdx
+	incq %r13
 	jmp compile_loop
 	
     compile_inc:
@@ -242,15 +266,22 @@ compile_code:
 	cmpb $TOK_INC, %r9b
 	je compile_inc
 
-	subq %rdx, %r11
+	subq %r13, %r11
 
 	movq %rax, %r14
 
-	emit op_inc op_inc_len
+	# emit op_inc op_inc_len
+	movq $op_inc_len, %rdx
+	leaq op_inc, %rsi
+	movq %rbx, %rdi
+	call emit_symbol
+	movq %rax, %rbx
 
-	backpatch_id_op %r14, %r11b
+	movq %r14, %rdi
+	movb %r11b, %sil
+	call backpatch_inc_dec
 
-	addq %r11, %rdx
+	addq %r11, %r13
 	jmp compile_loop
     compile_dec:
 	incq %r11
@@ -258,15 +289,22 @@ compile_code:
 	cmpb $TOK_DEC, %r9b
 	je compile_dec
 
-	subq %rdx, %r11
+	subq %r13, %r11
 
-	movq %rax, %r14
+	movq %rbx, %r14
 
-	emit op_dec op_dec_len
+	# emit op_inc op_inc_len
+	movq $op_dec_len, %rdx
+	leaq op_dec, %rsi
+	movq %rbx, %rdi
+	call emit_symbol
+	movq %rax, %rbx
 
-	backpatch_id_op %r14, %r11b
+	movq %r14, %rdi
+	movb %r11b, %sil
+	call backpatch_inc_dec
 
-	addq %r11, %rdx
+	addq %r11, %r13
 	jmp compile_loop
     compile_inc_pc:
 	incq %r11
@@ -274,15 +312,21 @@ compile_code:
 	cmpb $TOK_INC_PC, %r9b
 	je compile_inc_pc
 
-	subq %rdx, %r11
+	subq %r13, %r11
 
-	movq %rax, %r14
+	movq %rbx, %r14
 
-	emit op_inc_pc op_inc_pc_len
+	movq $op_inc_pc_len, %rdx
+	leaq op_inc_pc, %rsi
+	movq %rbx, %rdi
+	call emit_symbol
+	movq %rax, %rbx
 
-	backpatch_id_op %r14, %r11b
+	movq %r14, %rdi
+	movb %r11b, %sil
+	call backpatch_inc_dec
 
-	addq %r11, %rdx
+	addq %r11, %r13
 	jmp compile_loop
     compile_dec_pc:
 	incq %r11
@@ -290,77 +334,102 @@ compile_code:
 	cmpb $TOK_DEC_PC, %r9b
 	je compile_dec_pc
 
-	subq %rdx, %r11
+	subq %r13, %r11
 
-	movq %rax, %r14
+	movq %rbx, %r14
 
-	emit op_dec_pc op_dec_pc_len
+	movq $op_dec_pc_len, %rdx
+	leaq op_dec_pc, %rsi
+	movq %rbx, %rdi
+	call emit_symbol
+	movq %rax, %rbx
 
-	backpatch_id_op %r14, %r11b
+	movq %r14, %rdi
+	movb %r11b, %sil
+	call backpatch_inc_dec
 
-	addq %r11, %rdx
+	addq %r11, %r13
 	jmp compile_loop
     compile_read:
-	emit op_read op_read_len
+	movq $op_read_len, %rdx
+	leaq op_read, %rsi
+	movq %rbx, %rdi
+	call emit_symbol
+	movq %rax, %rbx
 
-	incq %rdx
+	incq %r13
 	jmp compile_loop
     compile_write:
-	emit op_write op_write_len
+	movq $op_write_len, %rdx
+	leaq op_write, %rsi
+	movq %rbx, %rdi
+	call emit_symbol
+	movq %rax, %rbx
 
-	incq %rdx
+	incq %r13
 	jmp compile_loop
     compile_jz:
-	# Check for zeroing loop
-	# movq $3, %rdx
-	# movq %r10, %rsi
-	# addq $rdx, %rsi
-	# movq zero_loop_inc, %rdi
-	# call strncmp
-	# cmpq $0, %rax
-	
-	emit op_cmpz, op_cmpz_len
+	movq $op_cmpz_len, %rdx
+	leaq op_cmpz, %rsi
+	movq %rbx, %rdi
+	call emit_symbol
+	movq %rax, %rbx
 
 	# Save address before jump to offset stack
-	movq %rax, (%r12, %r13, 8)
+	movq %rbx, (%r12, %r15, 8)
+	incq %r15
+
+	movq $op_je_near_len, %rdx
+	leaq op_je_near, %rsi
+	movq %rbx, %rdi
+	call emit_symbol
+	movq %rax, %rbx
+
 	incq %r13
-
-	emit op_je_near op_je_near_len
-
-	incq %rdx
 	jmp compile_loop
     compile_jnz:
-	emit op_cmpz, op_cmpz_len
+	movq $op_cmpz_len, %rdx
+	leaq op_cmpz, %rsi
+	movq %rbx, %rdi
+	call emit_symbol
+	movq %rax, %rbx
 
-	movq %rax, %r14
+	movq $op_jne_near_len, %rdx
+	leaq op_jne_near, %rsi
+	movq %rbx, %rdi
+	call emit_symbol
+	movq %rax, %rbx
 
-	emit op_jne_near, op_jne_near_len
+	decq %r15
+	movq (%r12, %r15, 8), %rdi
+	movq %rdi, -24(%rbp)
 
-	decq %r13
-	movq (%r12, %r13, 8), %r15
-
-	# Calculate displacement for 'je' at '['
-	movq %rax, %rbx                    # %rbx = current code address
-	movq %r15, %rcx
-	addq $op_je_near_len, %rcx	   # %rcx = address after je
-	subq %rcx, %rbx                    # %rbx = distance from '[' to ']'
+	movq %rbx, %rsi
+	subq %rdi, %rsi                    # %rdi = distance from '[' to ']'
+	subq $op_jne_near_len, %rsi
 
 	# Patch 'je' displacement
-	backpatch_near_jmp %r15, %ebx
+	call backpatch_jmp_near
+
+	movq -24(%rbp), %rdi
 
 	# Calculate displacement for 'jne' at ']'
-	movq %r15, %rbx
-	addq $op_je_near_len, %rbx         # %rbx = address after 'je' instruction
-	movq %rax, %rcx                    # %rcx = address after 'jne' instruction
-	subq %rcx, %rbx			   # %rbx = displacement
+	addq $op_je_near_len, %rdi         # %rdi = address after 'je' instruction
+	subq %rbx, %rdi			   # %rcx = displacement
 
 	# Patch 'jne' displacement
-	backpatch_near_jmp %r14, %ebx
+	movl %edi, %esi
+	movq %rbx, %rdi
+	subq $op_jne_near_len, %rdi
+	call backpatch_jmp_near
 
-	incq %rdx
+	incq %r13
 	jmp compile_loop
     compile_loop_end:
-	emit op_ret op_ret_len
+	movq $op_ret_len, %rdx
+	leaq op_ret, %rsi
+	movq %rbx, %rdi
+	call emit_symbol
 
     movq -16(%rbp), %rax
 
