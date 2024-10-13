@@ -59,6 +59,10 @@ op_dec_pc:
     subq $1, %r15
     .equiv op_dec_pc_len, . - op_dec_pc
 
+op_zero:
+    movb $0, (%r15)
+    .equiv op_zero_len, . - op_zero
+
 op_read:
     movq $1, %rdx
     movq %r15, %rsi
@@ -121,6 +125,7 @@ emit_symbol:
     popq %rbp
     ret
 
+# void backpatch_inc_dec(void* addr, int8_t value)
 backpatch_inc_dec:
     pushq %rbp
     movq %rsp, %rbp
@@ -132,6 +137,7 @@ backpatch_inc_dec:
     popq %rbp
     ret
 
+# void backpatch_jmp_near(void* addr, int32_t value)
 backpatch_jmp_near:
     pushq %rbp
     movq %rsp, %rbp
@@ -293,7 +299,6 @@ compile_code:
 
 	movq %rbx, %r14
 
-	# emit op_inc op_inc_len
 	movq $op_dec_len, %rdx
 	leaq op_dec, %rsi
 	movq %rbx, %rdi
@@ -305,6 +310,15 @@ compile_code:
 	call backpatch_inc_dec
 
 	addq %r11, %r13
+	jmp compile_loop
+    compile_zero:
+	movq $op_zero_len, %rdx
+	leaq op_zero, %rsi
+	movq %rbx, %rdi
+	call emit_symbol
+	movq %rax, %rbx
+	
+	addq $3, %r13
 	jmp compile_loop
     compile_inc_pc:
 	incq %r11
@@ -369,6 +383,26 @@ compile_code:
 	incq %r13
 	jmp compile_loop
     compile_jz:
+	# Check for [+]
+	movq $3, %rdx
+	movq %r10, %rsi
+	addq %r11, %rsi
+	leaq zero_loop_inc, %rdi
+	call strncmp
+
+	test %rax, %rax
+	je compile_zero
+
+	# Check for [-]
+	movq $3, %rdx
+	movq %r10, %rsi
+	addq %r11, %rsi
+	leaq zero_loop_dec, %rdi
+	call strncmp
+
+	test %rax, %rax
+	je compile_zero
+
 	movq $op_cmpz_len, %rdx
 	leaq op_cmpz, %rsi
 	movq %rbx, %rdi
