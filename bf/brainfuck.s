@@ -46,38 +46,49 @@ op_init:
     .equiv op_init_len, . - op_init
 
 op_inc:
-    addb $1, (%r15)
+    addb $42, (%r15)
     .equiv op_inc_len, . - op_inc
 
 op_dec:
-    subb $1, (%r15)
+    subb $42, (%r15)
     .equiv op_dec_len, . - op_dec
 
 op_inc_pc:
-    addq $1, %r15
+    addq $42, %r15
     .equiv op_inc_pc_len, . - op_inc_pc
 
 op_dec_pc:
-    subq $1, %r15
+    subq $42, %r15
     .equiv op_dec_pc_len, . - op_dec_pc
+
+op_mov:
+    movb (%r15), %al
+    addb %al, 42(%r15)
+    .equiv op_mov_len, . - op_mov
+
+op_mul:
+    movl $42, %eax
+    mulq (%r15)
+    addq %rax, 42(%r15)
+    .equiv op_mul_len, . - op_mul
 
 op_zero:
     movb $0, (%r15)
     .equiv op_zero_len, . - op_zero
 
 op_read:
-    movq $1, %rdx
+    movl $1, %edx
     movq %r15, %rsi
-    xorq %rdi, %rdi
+    xorl %edi, %edi
     movq $SYS_READ, %rax
     syscall
     .equiv op_read_len, . - op_read
 
 op_write:
-    movq $1, %rdx
+    movl $1, %edx
     movq %r15, %rsi
-    movq $1, %rdi
-    movq $SYS_WRITE, %rax
+    movl $1, %edi
+    movl $SYS_WRITE, %eax
     syscall
     .equiv op_write_len, . - op_write
 
@@ -151,6 +162,120 @@ backpatch_jmp_near:
     popq %rbp
     ret
 
+# void backpatch_mov(void* addr, int8_t value)
+backpatch_mov:
+    pushq %rbp
+    movq %rsp, %rbp
+
+    addq $6, %rdi
+    movb %sil, (%rdi)
+
+    movq %rbp, %rsp
+    popq %rbp
+    ret
+
+# void backpatch_mul(void* addr, int8_t mult, int8_t offset)
+backpatch_mul:
+    pushq %rbp
+    movq %rsp, %rbp
+
+    addq $1, %rdi
+    movb %sil, (%rdi)
+    addq $10, %rdi
+    movb %dl, (%rdi)
+
+    movq %rbp, %rsp
+    popq %rbp
+    ret
+
+# size_t*, size_t* emit_mul(size_t *delta_start, size_t delta_offset)
+emit_mul:
+    pushq %rbp
+    movq %rsp, %rbp
+
+    # Add one to the offset to be safe
+    addq $1, %rsi
+
+    movq %rdi, %r8
+    addq %rsi, %r8
+
+    movq %rdi, %r9
+    subq %rsi, %r9
+    
+    xorl %r10d, %r10d
+    delta_loop:
+	movb (%r8), %r10b
+
+	testq %r8, %r9
+	jz delta_loop_end
+
+	testb %r10b, %r10b
+	jz delta_loop
+
+	cmpb $1, %r10b
+	jne non_one_mult
+
+	movq $op_mov_len, %rdx
+	movq op_mov, %rsi
+	movq %rbx, %rdi
+	call emit_symbol
+
+	movq %rbx, %rdi # void *addr
+	movq %rax, %rbx
+
+	movq %r8, %rsi # int8_t value
+	subq %rdi, %rsi
+
+	call backpatch_mov
+	
+	incq %r8
+	jmp delta_loop
+	non_one_mult:
+	movq $op_mul_len, %rdx
+	movq op_mul, %rsi
+	movq %rbx, %rdi
+	call emit_symbol
+
+	movq %rbx, %rdi # void *addr
+	movq %rbx, %rax
+
+	movb %r10b, %sil # int8_t mult
+
+	movq %r8, %rdx # int8_t offset
+	subq %rdi, %rdx
+	call backpatch_mul
+	
+	incq %r8
+	jmp delta_loop
+    delta_loop_end:	
+
+    # Zero initial cell
+    movq $op_zero_len, %rdx
+    movq op_zero, %rsi
+    movq %rbx, %rdi
+    call emit_symbol
+
+    movq %rbp, %rsp
+    popq %rbp
+    ret
+
+optimize_mul:
+    pushq %rbp
+    movq %rsp, %rbp
+
+    call check_mul_opt
+    test %rax, %rax
+    jz optimize_mul_end
+
+    movq %rax, %rdi # int8_t *deltas
+    movq %rdx, %rsi # int64_t delta_offset
+    call emit_mul
+
+    optimize_mul_end:
+    movq %rbp, %rsp
+    popq %rbp
+    ret
+
 # Your brainfuck subroutine will receive one argument:
 # a zero termianted string containing the code to execute.
 brainfuck:
@@ -180,7 +305,7 @@ print_code:
 
     movq %rdi, %rsi
     movq $format_str, %rdi
-    xorq %rax, %rax
+    xorl %eax, %eax
     call printf
 
     movq %rbp, %rsp
@@ -198,16 +323,16 @@ compile_code:
 
     # Allocate memory for program
     # void *mmap(void addr[.length], size_t length, int prot, int flags, int fd, off_t offset);
-    xorq %r9, %r9 # off_t offset
+    xorl %r9d, %r9d # off_t offset
     movq $-1, %r8 # int fd
-    xorq %rcx, %rcx # int flags
+    xorl %ecx, %ecx # int flags
     orq $MAP_PRIVATE, %rcx
     orq $MAP_ANONYMOUS, %rcx
-    xorq %rdx, %rdx # int prot
+    xorl %edx, %edx # int prot
     orq $PROT_READ, %rdx
     orq $PROT_WRITE, %rdx
     movq $PROG_SIZE, %rsi # size_t length
-    xorq %rdi, %rdi # void *addr
+    xorl %edi, %edi # void *addr
     call mmap
 
     # Save pointer to allocated memory
@@ -221,7 +346,7 @@ compile_code:
 
     # Initialize pointer to offset stack
     leaq offset_stack, %r12
-    xorq %r15, %r15
+    xorl %r15d, %r15d
 
     movq $op_init_len, %rdx
     leaq op_init, %rsi
@@ -230,9 +355,9 @@ compile_code:
     movq %rax, %rbx
 
     # Code offset
-    xorq %r13, %r13
+    xorl %r13d, %r13d
     compile_loop:
-	xorq %r8, %r8
+	xorl %r8d, %r8d
 	movb (%r10, %r13, 1), %r8b
 
 	# Store old index for repeating operations
@@ -402,6 +527,26 @@ compile_code:
 	movq %r10, -32(%rbp)
 	movq %r11, -24(%rbp)
 
+	movq %r10, %rsi
+	addq %r13, %rsi
+	movq %rbx, %rdi	
+	call optimize_mul
+
+	# Check if we compiler the loop
+	cmpq $0, %rax
+	je mul_no_opt
+
+	movq -32(%rbp), %r10
+	movq -24(%rbp), %r11
+
+	# Move new pointer to code and program
+	movq %rax, %rbx
+	movq %rdx, %r13
+	subq %r10, %r13
+
+	jmp compile_loop
+	mul_no_opt:
+
 	# Check for [+]
 	movq $3, %rdx
 	movq %r10, %rsi
@@ -517,7 +662,7 @@ execute_bytecode:
 
     # Make the program memory executable
     # int mprotect(void addr[.len], size_t len, int prot);
-    xorq %rdx, %rdx # int prot
+    xorl %edx, %edx # int prot
     orq $PROT_READ, %rdx
     orq $PROT_EXEC, %rdx
     movq $PROG_SIZE, %rsi # size_t len
