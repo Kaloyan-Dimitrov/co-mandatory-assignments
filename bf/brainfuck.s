@@ -276,6 +276,190 @@ optimize_mul:
     popq %rbp
     ret
 
+# Returns: 0 if false
+is_valid_multiplication_loop:
+	push %rbp
+	mov %rsp, %rbp
+	sub $16, %rsp
+	mov %r12, -16(%rbp)
+	mov %rdi, %r12												# Save the pointer to the start of the loop
+
+	mov $']', %rsi
+	call strchr														# Search for closing loop bracket
+
+	cmpq $0, %rax
+	je end_invalid_multiplication_loop		# If closing loop bracket not found, return false
+
+	cmpb $'-', 1(%r12)
+	jne end_invalid_multiplication_loop		# If the first character is not a decrement, return false
+
+	# copy the string to a buffer
+	mov $loop_buffer, %rdi
+	sub %r12, %rax 												# Calculate the length of the loop string
+	inc %rax
+	mov %r12, %rsi
+	mov %rax, %rdx
+	strc:
+	call strncpy
+
+	mov $loop_buffer, %rdi
+	inc %rdi															# Skip the opening loop bracket in the search
+	mov $'[', %rsi
+	call strchr														# Search for opening loop bracket
+	cmpq $0, %rax
+	jne end_invalid_multiplication_loop		# If opening loop bracket is found, return false
+
+	mov $loop_buffer, %rdi
+	inc %rdi															# Skip the opening loop bracket in the search
+	mov $'.', %rsi
+	call strchr														# Search for the .
+	cmpq $0, %rax
+	jne end_invalid_multiplication_loop		# If the . is found, return false
+
+	mov $loop_buffer, %rdi
+	inc %rdi															# Skip the opening loop bracket in the search
+	mov $',', %rsi
+	call strchr														# Search for the ,
+	cmpq $0, %rax
+	jne end_invalid_multiplication_loop		# If the , is found, return false
+
+	# Ensure net pointer movement - check that the number of '>' and '<' are equal	
+	mov $loop_buffer, %rdi
+	call strlen
+
+	mov %rax, %rcx
+	dec %rcx 															# Subtract 1 from the length to get the last valid index
+	mov $loop_buffer, %rdx
+	mov $0, %rdi
+	mov $0, %rsi
+	check_loop:
+		cmpb $'<', (%rdx, %rcx)
+		je increment_rdi
+
+		cmpb $'>', (%rdx, %rcx)
+		je increment_rsi
+
+		jmp check_loop_loop
+
+		increment_rdi:
+			inc %rdi
+			jmp check_loop_loop
+
+		increment_rsi:
+			inc %rsi
+			jmp check_loop_loop
+
+		check_loop_loop:
+		loop check_loop
+
+	cmp %rdi, %rsi
+	jne end_invalid_multiplication_loop
+	
+	mov $1, %rax
+	jmp end_valid_multiplication_loop
+
+	end_invalid_multiplication_loop:
+		movq $0, %rax
+	end_valid_multiplication_loop:
+		mov -16(%rbp), %r12
+		mov %rbp, %rsp
+		pop %rbp
+		ret
+
+# Arguments: %rdi - pointer to the start of the loop
+# Returns: %rax - pointer to the middle of the deltas array, %rdx - offset to the larger end of the array 
+# memset memory
+check_mul_opt:
+	push %rbp
+	mov %rsp, %rbp
+	sub $16, %rsp
+	mov %r11, -8(%rbp)
+	mov %r12, -16(%rbp)
+
+	mov %rdi, %r12
+	call is_valid_multiplication_loop
+	cmp $0, %rax
+	je end_parse_multiplication_loop
+
+	mov $multiplication_deltas_middle, %rdi
+	mov $loop_buffer, %rsi
+	inc %rsi
+
+	mov $0, %r11 # This is the max offset to the larger end of the array
+
+	mulloop_parse_loop:
+		cmpb $0, (%rsi)
+		je end_mulloop_parse_loop
+
+		mov %rdi, %rax
+		sub $multiplication_deltas_middle, %rax
+		cmp $0, %rax
+		jge compare_max_offset
+		mov $-1, %r8
+		mul %r8
+
+		compare_max_offset:
+			cmp %r11, %rax
+			jge update_max_offset
+			jmp mulloop_parse_char
+
+		update_max_offset:
+			mov %rax, %r11
+
+		mulloop_parse_char:
+		movb (%rsi), %cl
+
+		cmp $'>', %cl
+		je increment_pointer
+
+		cmp $'<', %cl
+		je decrement_pointer
+
+		cmp $'+', %cl
+		je increment_current_cell
+
+		cmp $'-', %cl
+		je decrement_current_cell
+
+		jmp end_mulloop_parse_loop
+
+		increment_pointer:
+			inc %rdi
+			inc %rsi
+			jmp mulloop_parse_loop
+
+		decrement_pointer:
+			dec %rdi
+			inc %rsi
+			jmp mulloop_parse_loop
+
+		increment_current_cell:
+			incb (%rdi)
+			inc %rsi
+			jmp mulloop_parse_loop
+
+		decrement_current_cell:
+			decb (%rdi)
+			inc %rsi
+			jmp mulloop_parse_loop
+
+	end_mulloop_parse_loop:
+		mov $multiplication_deltas_middle, %rax
+		mov %r11, %rdx
+		cmpb $-1, (%rdi)
+		je end_parse_multiplication_loop
+		mov $0, %rax
+
+	end_parse_multiplication_loop:
+		mov -16(%rbp), %r12
+		mov -8(%rbp), %r11
+		mov %rbp, %rsp
+		pop %rbp
+		ret
+
+
+
+
 # Your brainfuck subroutine will receive one argument:
 # a zero termianted string containing the code to execute.
 brainfuck:
