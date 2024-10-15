@@ -1,7 +1,11 @@
 .section .bss
-    memory:	    .skip 65536
-    offset_stack:   .skip 1024
-    good_carry:	    .skip 8
+    memory:			.skip 65536
+    offset_stack:   		.skip 1024
+    loop_buffer:    		.skip 65536
+    good_carry:	    		.skip 8
+    mul_deltas_left:		.skip 65536
+    mul_deltas_middle:		.skip 1
+    mul_deltas_right:		.skip 65536
 
 .section .data
     format_str:	    .asciz "We should be executing the following code:\n%s"
@@ -188,26 +192,33 @@ backpatch_mul:
     popq %rbp
     ret
 
-# size_t*, size_t* emit_mul(size_t *delta_start, size_t delta_offset)
+# size_t*, size_t emit_mul(size_t *delta_start, size_t delta_offset)
 emit_mul:
     pushq %rbp
     movq %rsp, %rbp
+    subq $16, %rsp
 
-    # Add one to the offset to be safe
-    addq $1, %rsi
+    movq %rdi, -8(%rbp)
+
+    # Add to the offset to be safe
+    addq $4, %rsi
 
     movq %rdi, %r8
-    addq %rsi, %r8
+    subq %rsi, %r8
 
     movq %rdi, %r9
-    subq %rsi, %r9
+    addq %rsi, %r9
     
     xorl %r10d, %r10d
     delta_loop:
+	incq %r8
 	movb (%r8), %r10b
 
-	testq %r8, %r9
-	jz delta_loop_end
+	cmpq %r8, -8(%rbp)
+	je delta_loop
+
+	cmpq %r8, %r9
+	je delta_loop_end
 
 	testb %r10b, %r10b
 	jz delta_loop
@@ -216,7 +227,7 @@ emit_mul:
 	jne non_one_mult
 
 	movq $op_mov_len, %rdx
-	movq op_mov, %rsi
+	leaq op_mov, %rsi
 	movq %rbx, %rdi
 	call emit_symbol
 
@@ -224,34 +235,32 @@ emit_mul:
 	movq %rax, %rbx
 
 	movq %r8, %rsi # int8_t value
-	subq %rdi, %rsi
+	subq -8(%rbp), %rsi
 
 	call backpatch_mov
 	
-	incq %r8
 	jmp delta_loop
 	non_one_mult:
 	movq $op_mul_len, %rdx
-	movq op_mul, %rsi
+	leaq op_mul, %rsi
 	movq %rbx, %rdi
 	call emit_symbol
 
 	movq %rbx, %rdi # void *addr
-	movq %rbx, %rax
+	movq %rax, %rbx
 
 	movb %r10b, %sil # int8_t mult
 
 	movq %r8, %rdx # int8_t offset
-	subq %rdi, %rdx
+	subq -8(%rbp), %rdx
 	call backpatch_mul
 	
-	incq %r8
 	jmp delta_loop
     delta_loop_end:	
 
     # Zero initial cell
     movq $op_zero_len, %rdx
-    movq op_zero, %rsi
+    leaq op_zero, %rsi
     movq %rbx, %rdi
     call emit_symbol
 
@@ -263,6 +272,7 @@ optimize_mul:
     pushq %rbp
     movq %rsp, %rbp
 
+    xchg %rdi, %rsi
     call check_mul_opt
     test %rax, %rax
     jz optimize_mul_end
@@ -277,7 +287,7 @@ optimize_mul:
     ret
 
 # Returns: 0 if false
-is_valid_multiplication_loop:
+is_mul_loop:
 	push %rbp
 	mov %rsp, %rbp
 	sub $16, %rsp
@@ -377,11 +387,11 @@ check_mul_opt:
 	mov %r12, -16(%rbp)
 
 	mov %rdi, %r12
-	call is_valid_multiplication_loop
+	call is_mul_loop
 	cmp $0, %rax
 	je end_parse_multiplication_loop
 
-	mov $multiplication_deltas_middle, %rdi
+	mov $mul_deltas_middle, %rdi
 	mov $loop_buffer, %rsi
 	inc %rsi
 
@@ -392,7 +402,7 @@ check_mul_opt:
 		je end_mulloop_parse_loop
 
 		mov %rdi, %rax
-		sub $multiplication_deltas_middle, %rax
+		sub $mul_deltas_middle, %rax
 		cmp $0, %rax
 		jge compare_max_offset
 		mov $-1, %r8
@@ -444,21 +454,18 @@ check_mul_opt:
 			jmp mulloop_parse_loop
 
 	end_mulloop_parse_loop:
-		mov $multiplication_deltas_middle, %rax
+		mov $mul_deltas_middle, %rax
 		mov %r11, %rdx
 		cmpb $-1, (%rdi)
 		je end_parse_multiplication_loop
 		mov $0, %rax
 
 	end_parse_multiplication_loop:
-		mov -16(%rbp), %r12
-		mov -8(%rbp), %r11
-		mov %rbp, %rsp
-		pop %rbp
-		ret
-
-
-
+	mov -16(%rbp), %r12
+	mov -8(%rbp), %r11
+	mov %rbp, %rsp
+	pop %rbp
+	ret
 
 # Your brainfuck subroutine will receive one argument:
 # a zero termianted string containing the code to execute.
@@ -716,17 +723,23 @@ compile_code:
 	movq %rbx, %rdi	
 	call optimize_mul
 
-	# Check if we compiler the loop
-	cmpq $0, %rax
-	je mul_no_opt
+	# Check if we compiled the loop
+	testq %rax, %rax
+	jz mul_no_opt
 
 	movq -32(%rbp), %r10
 	movq -24(%rbp), %r11
 
-	# Move new pointer to code and program
+	xorl %r9d, %r9d
+
+	# Move new pointer to program and code
 	movq %rax, %rbx
-	movq %rdx, %r13
-	subq %r10, %r13
+	mul_opt_move_forward:
+	    incq %r13
+	    movb (%r10, %r13, 1), %r9b
+	    cmpb $TOK_JNZ, %r9b
+	    jne mul_opt_move_forward
+	incq %r13
 
 	jmp compile_loop
 	mul_no_opt:
