@@ -72,7 +72,7 @@ op_mov:
 
 op_mul:
     movl $42, %eax
-    mulq (%r15)
+    imulb (%r15)
     addq %rax, 42(%r15)
     .equiv op_mul_len, . - op_mul
 
@@ -371,10 +371,10 @@ is_mul_loop:
 	end_invalid_multiplication_loop:
 		movq $0, %rax
 	end_valid_multiplication_loop:
-		mov -16(%rbp), %r12
-		mov %rbp, %rsp
-		pop %rbp
-		ret
+	mov -16(%rbp), %r12
+	mov %rbp, %rsp
+	pop %rbp
+	ret
 
 # Arguments: %rdi - pointer to the start of the loop
 # Returns: %rax - pointer to the middle of the deltas array, %rdx - offset to the larger end of the array 
@@ -383,6 +383,7 @@ check_mul_opt:
 	push %rbp
 	mov %rsp, %rbp
 	sub $16, %rsp
+
 	mov %r11, -8(%rbp)
 	mov %r12, -16(%rbp)
 
@@ -390,6 +391,11 @@ check_mul_opt:
 	call is_mul_loop
 	cmp $0, %rax
 	je end_parse_multiplication_loop
+
+	movl $131073, %edx
+	xorl %esi, %esi
+	leaq mul_deltas_left, %rdi
+	call memset
 
 	mov $mul_deltas_middle, %rdi
 	mov $loop_buffer, %rsi
