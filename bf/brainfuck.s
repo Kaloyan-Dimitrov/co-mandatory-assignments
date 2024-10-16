@@ -292,23 +292,18 @@ is_mul_loop:
 	push %rbp
 	mov %rsp, %rbp
 	sub $16, %rsp
+
 	mov %r12, -16(%rbp)
+
 	mov %rdi, %r12												# Save the pointer to the start of the loop
 
-	mov $']', %rsi
-	call strchr														# Search for closing loop bracket
-
-	cmpq $0, %rax
-	je end_invalid_multiplication_loop		# If closing loop bracket not found, return false
-
-	# copy the string to a buffer
 	mov $loop_buffer, %rdi
-	sub %r12, %rax 												# Calculate the length of the loop string
-	inc %rax
 	mov %r12, %rsi
-	mov %rax, %rdx
-	strc:
-	call strncpy
+	movq $']', %rdx
+	movq $65536, %rcx
+	call memccpy
+
+	movb $0, (%rax)
 
 	mov $loop_buffer, %rdi
 	inc %rdi															# Skip the opening loop bracket in the search
@@ -829,7 +824,6 @@ compile_code:
 
 	jmp compile_loop
 	mul_no_opt:
-
 
 	movq good_carry, %rax
 	cmpq $0, %rax
