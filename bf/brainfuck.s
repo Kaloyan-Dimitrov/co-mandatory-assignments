@@ -50,30 +50,30 @@ op_init:
     .equiv op_init_len, . - op_init
 
 op_inc:
-    addb $42, (%r15)
+    addb $0xFF, (%r15)
     .equiv op_inc_len, . - op_inc
 
 op_dec:
-    subb $42, (%r15)
+    subb $0xFF, (%r15)
     .equiv op_dec_len, . - op_dec
 
 op_inc_pc:
-    addq $42, %r15
+    addq $0xFFFFFF, %r15
     .equiv op_inc_pc_len, . - op_inc_pc
 
 op_dec_pc:
-    subq $42, %r15
+    subq $0xFFFFFF, %r15
     .equiv op_dec_pc_len, . - op_dec_pc
 
 op_mov:
     movb (%r15), %al
-    addb %al, 42(%r15)
+    addb %al, 0xFFFFFF(%r15)
     .equiv op_mov_len, . - op_mov
 
 op_mul:
-    movl $42, %eax
+    movb $0xFF, %al
     imulb (%r15)
-    addq %rax, 42(%r15)
+    addb %al, 0xFFFFFF(%r15)
     .equiv op_mul_len, . - op_mul
 
 op_zero:
@@ -142,13 +142,13 @@ emit_symbol:
     popq %rbp
     ret
 
-# void backpatch_inc_dec(void* addr, int8_t value)
+# void backpatch_inc_dec(void* addr, int32_t value)
 backpatch_inc_dec:
     pushq %rbp
     movq %rsp, %rbp
 
     addq $3, %rdi
-    movb %sil, (%rdi)
+    movl %esi, (%rdi)
 
     movq %rbp, %rsp
     popq %rbp
@@ -172,21 +172,21 @@ backpatch_mov:
     movq %rsp, %rbp
 
     addq $6, %rdi
-    movb %sil, (%rdi)
+    movl %esi, (%rdi)
 
     movq %rbp, %rsp
     popq %rbp
     ret
 
-# void backpatch_mul(void* addr, int8_t mult, int8_t offset)
+# void backpatch_mul(void* addr, int8_t mult, int32_t offset)
 backpatch_mul:
     pushq %rbp
     movq %rsp, %rbp
 
     addq $1, %rdi
     movb %sil, (%rdi)
-    addq $10, %rdi
-    movb %dl, (%rdi)
+    addq $7, %rdi
+    movl %edx, (%rdi)
 
     movq %rbp, %rsp
     popq %rbp
@@ -251,7 +251,7 @@ emit_mul:
 
 	movb %r10b, %sil # int8_t mult
 
-	movq %r8, %rdx # int8_t offset
+	movq %r8, %rdx # int32_t offset
 	subq -8(%rbp), %rdx
 	call backpatch_mul
 	
@@ -299,9 +299,6 @@ is_mul_loop:
 
 	cmpq $0, %rax
 	je end_invalid_multiplication_loop		# If closing loop bracket not found, return false
-
-	cmpb $'-', 1(%r12)
-	jne end_invalid_multiplication_loop		# If the first character is not a decrement, return false
 
 	# copy the string to a buffer
 	mov $loop_buffer, %rdi
@@ -486,6 +483,9 @@ brainfuck:
     call print_code
 
     movq -8(%rbp), %rdi # const char *code
+    call clean_code
+
+    movq %rax, %rdi
     call compile_code
 
     movq %rax, %rdi # void *bytecode
@@ -504,6 +504,60 @@ print_code:
     movq $format_str, %rdi
     xorl %eax, %eax
     call printf
+
+    movq %rbp, %rsp
+    popq %rbp
+    ret
+
+# char *clean_code(const char* code)
+clean_code:
+    pushq %rbp
+    movq %rsp, %rbp
+    subq $16, %rsp
+
+    movq %rdi, -8(%rbp)
+
+    call strlen
+
+    movl $1, %esi
+    movq %rax, %rdi
+    call calloc
+
+    movq -8(%rbp), %rsi
+    movq %rax, -16(%rbp)
+    movq %rax, %rdi
+
+    process_loop:
+	lodsb
+	test %al, %al
+	jz process_done
+
+	cmp $'<', %al
+	je copy_char
+	cmp $'>', %al
+	je copy_char
+	cmp $'+', %al
+	je copy_char
+	cmp $'-', %al
+	je copy_char
+	cmp $'[', %al
+	je copy_char
+	cmp $']', %al
+	je copy_char
+	cmp $'.', %al
+	je copy_char
+	cmp $',', %al
+	je copy_char
+
+	jmp process_loop
+    copy_char:
+	stosb
+	jmp process_loop
+
+    process_done:
+	movb $0, (%rdi)
+
+    movq -16(%rbp), %rax
 
     movq %rbp, %rsp
     popq %rbp
@@ -600,7 +654,6 @@ compile_code:
 
 	movq %rax, %r14
 
-	# emit op_inc op_inc_len
 	movq $op_inc_len, %rdx
 	leaq op_inc, %rsi
 	movq %rbx, %rdi
@@ -608,7 +661,7 @@ compile_code:
 	movq %rax, %rbx
 
 	movq %r14, %rdi
-	movb %r11b, %sil
+	movl %r11d, %esi
 	call backpatch_inc_dec
 
 	movq $1, good_carry
@@ -632,7 +685,7 @@ compile_code:
 	movq %rax, %rbx
 
 	movq %r14, %rdi
-	movb %r11b, %sil
+	movl %r11d, %esi
 	call backpatch_inc_dec
 
 	movq $1, good_carry
@@ -667,7 +720,7 @@ compile_code:
 	movq %rax, %rbx
 
 	movq %r14, %rdi
-	movb %r11b, %sil
+	movl %r11d, %esi
 	call backpatch_inc_dec
 
 	movq $0, good_carry
@@ -691,7 +744,7 @@ compile_code:
 	movq %rax, %rbx
 
 	movq %r14, %rdi
-	movb %r11b, %sil
+	movl %r11d, %esi
 	call backpatch_inc_dec
 
 	movq $0, good_carry
@@ -724,32 +777,6 @@ compile_code:
 	movq %r10, -32(%rbp)
 	movq %r11, -24(%rbp)
 
-	movq %r10, %rsi
-	addq %r13, %rsi
-	movq %rbx, %rdi	
-	call optimize_mul
-
-	# Check if we compiled the loop
-	testq %rax, %rax
-	jz mul_no_opt
-
-	movq -32(%rbp), %r10
-	movq -24(%rbp), %r11
-
-	xorl %r9d, %r9d
-
-	# Move new pointer to program and code
-	movq %rax, %rbx
-	mul_opt_move_forward:
-	    incq %r13
-	    movb (%r10, %r13, 1), %r9b
-	    cmpb $TOK_JNZ, %r9b
-	    jne mul_opt_move_forward
-	incq %r13
-
-	jmp compile_loop
-	mul_no_opt:
-
 	# Check for [+]
 	movq $3, %rdx
 	movq %r10, %rsi
@@ -774,7 +801,32 @@ compile_code:
 	movq -24(%rbp), %r11
 
 	test %rax, %rax
-	je compile_zero
+	jz compile_zero
+
+	movq %r10, %rsi
+	addq %r13, %rsi
+	movq %rbx, %rdi	
+	#call optimize_mul
+	xorl %eax, %eax
+
+	# Check if we compiled the loop
+	testq %rax, %rax
+	jz mul_no_opt
+
+	xorl %r9d, %r9d
+
+	# Move new pointer to program and code
+	movq %rax, %rbx
+	mul_opt_move_forward:
+	    incq %r13
+	    movb (%r10, %r13, 1), %r9b
+	    cmpb $TOK_JNZ, %r9b
+	    jne mul_opt_move_forward
+	incq %r13
+
+	jmp compile_loop
+	mul_no_opt:
+
 
 	movq good_carry, %rax
 	cmpq $0, %rax
