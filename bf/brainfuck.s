@@ -47,6 +47,7 @@ op_init:
     pushq %rbp
     movq %rsp, %rbp
     leaq memory, %r15
+    addq $30000, %r15
     .equiv op_init_len, . - op_init
 
 op_inc:
@@ -359,11 +360,11 @@ is_mul_loop:
 		check_loop_loop:
 		loop check_loop
 
-	cmp %rdi, %rsi
-	jne end_invalid_multiplication_loop
-	
-	mov $1, %rax
-	jmp end_valid_multiplication_loop
+		cmp %rdi, %rsi
+		jne end_invalid_multiplication_loop
+		
+		mov $1, %rax
+		jmp end_valid_multiplication_loop
 
 	end_invalid_multiplication_loop:
 		movq $0, %rax
@@ -806,8 +807,10 @@ compile_code:
 	movq %r10, %rsi
 	addq %r13, %rsi
 	movq %rbx, %rdi	
-	#call optimize_mul
-	xorl %eax, %eax
+	call optimize_mul
+
+	movq -32(%rbp), %r10
+	movq -24(%rbp), %r11
 
 	# Check if we compiled the loop
 	testq %rax, %rax
